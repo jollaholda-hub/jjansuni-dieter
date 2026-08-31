@@ -127,7 +127,7 @@ function scoreRecipe(r, mealType, haveSet, excludeIds, history, pantryStrict) {
   const have = r.ingredients.filter(i => haveSet.has(i)).length;
   const missing = total - have;
   const pantryMatch = have / total;
-  const kidBonus = (mealType === "lunch" || mealType === "dinner") && r.kidFriendly ? 3 : 0;
+  const kidBonus = mealType === "dinner" && r.kidFriendly ? 3 : 0;
   let prefScore = 0;
   (r.tags || []).forEach(t => prefScore += (state.prefTags[t] || 0));
   (r.ingredients || []).forEach(i => prefScore += (state.prefTags[i] || 0) * 0.5);
