@@ -47,6 +47,7 @@ function defaultState() {
     history: [],
     spendLog: {},
     eatLog: {},
+    exerciseLog: {},
   };
 }
 
@@ -278,6 +279,7 @@ function renderHome() {
   const exIdx = new Date().getDate() % modePool.length;
   const ex = modePool[exIdx];
   const stretch = STRETCHES[new Date().getDate() % STRETCHES.length];
+  const exDone = state.exerciseLog[todayKey()];
 
   document.getElementById("main").innerHTML = `
     <div class="hero">
@@ -315,6 +317,12 @@ function renderHome() {
         <div class="ex-name" style="font-size:13px;">🧘 스트레칭: ${stretch.name}</div>
         <ol class="steps">${stretch.steps.map(s => `<li>${s}</li>`).join("")}</ol>
       </div>
+      <div class="meal-actions" style="margin-top:12px;">
+        ${exDone
+          ? `<button class="btn secondary block" disabled>✅ 완료: ${exDone.name} (-${exDone.kcal}kcal)</button>`
+          : `<button class="btn block" id="btnExDone">✅ 오늘 운동 완료로 기록</button>`}
+      </div>
+      <div class="link-row"><button class="link-btn" id="btnExCustom">다른 운동 했어요 (직접 기록)</button></div>
     </div>
 
     <div class="card">
@@ -337,6 +345,33 @@ function renderHome() {
 }
 
 function bindHomeEvents() {
+  const exDoneBtn = document.getElementById("btnExDone");
+  if (exDoneBtn) exDoneBtn.addEventListener("click", () => {
+    const mode = state.settings.exerciseMode || "home";
+    const modePool = EXERCISE_MODES[mode];
+    const ex = modePool[new Date().getDate() % modePool.length];
+    state.exerciseLog[todayKey()] = { name: ex.name, kcal: ex.kcal, mode };
+    saveState();
+    renderHome();
+  });
+  document.getElementById("btnExCustom").addEventListener("click", () => {
+    openModal(`
+      <h2>운동 직접 기록</h2>
+      <div class="field"><label>무엇을 하셨나요?</label><input type="text" id="exName" placeholder="예: 줄넘기 15분"></div>
+      <div class="field"><label>소모 칼로리(kcal, 대략)</label><input type="number" id="exCal" placeholder="예: 100"></div>
+      <button class="btn block" id="exSaveBtn">기록하기</button>
+      <div class="modal-close-row"><button class="btn ghost" id="modalCloseBtn">취소</button></div>
+    `);
+    document.getElementById("exSaveBtn").addEventListener("click", () => {
+      const name = document.getElementById("exName").value.trim();
+      if (!name) return;
+      const kcal = parseInt(document.getElementById("exCal").value, 10) || 0;
+      state.exerciseLog[todayKey()] = { name, kcal, mode: "custom" };
+      saveState();
+      closeModal();
+      renderHome();
+    });
+  });
   document.querySelectorAll("#exModeSeg button").forEach(btn => {
     btn.addEventListener("click", () => {
       state.settings.exerciseMode = btn.dataset.v;
@@ -653,6 +688,24 @@ function renderShopping() {
   });
 }
 
+function recentDaysSummaryHtml(days) {
+  const rows = [];
+  for (let i = 0; i < days; i++) {
+    const d = new Date(Date.now() - i * DAY_MS);
+    const key = todayKey(d);
+    const eaten = (state.eatLog[key] || []).reduce((s, e) => s + e.cal, 0);
+    const ex = state.exerciseLog[key];
+    rows.push({ key, eaten, ex });
+  }
+  const hasAny = rows.some(r => r.eaten > 0 || r.ex);
+  if (!hasAny) return `<div class="empty-note">아직 기록이 없어요. 홈 화면에서 먹은 거·운동을 기록해보세요.</div>`;
+  return rows.map(r => `
+    <div class="shop-item">
+      <span>${r.key.slice(5)} · 🍴 ${r.eaten ? r.eaten + "kcal" : "기록없음"}</span>
+      <span class="cost">${r.ex ? "✅ " + r.ex.name : "운동 기록없음"}</span>
+    </div>`).join("");
+}
+
 function renderMe() {
   const d = deriveProfile();
   const p = state.profile;
@@ -683,6 +736,11 @@ function renderMe() {
       <div class="field"><label>오늘 체중(kg)</label><input type="number" id="weightInput" placeholder="${currentWeight()}"></div>
       <button class="btn secondary block" id="weightSaveBtn">기록하기</button>
       ${state.weightLog.slice().reverse().slice(0, 6).map(w => `<div class="shop-item"><span>${w.date}</span><span class="cost">${w.weight}kg</span></div>`).join("")}
+    </div>
+
+    <div class="card">
+      <h2>📋 지난 7일 기록</h2>
+      ${recentDaysSummaryHtml(7)}
     </div>
 
     <div class="card">
