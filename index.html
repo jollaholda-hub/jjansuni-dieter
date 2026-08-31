@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1">
+<title>짠순이 다이어터</title>
+<link rel="manifest" href="manifest.json">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="짠순이다이어터">
+<meta name="theme-color" content="#2f9e44">
+<link rel="apple-touch-icon" href="icons/icon-180.png">
+<link rel="icon" href="icons/icon-192.png">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div id="app">
+  <header class="topbar">
+    <h1>🥗 짠순이 다이어터</h1>
+    <div class="today" id="todayLabel"></div>
+  </header>
+  <main id="main"></main>
+
+  <nav class="tabbar">
+    <button data-tab="home"><span class="icon">🏠</span>홈</button>
+    <button data-tab="pantry"><span class="icon">🧺</span>재고</button>
+    <button data-tab="recipes"><span class="icon">📒</span>레시피</button>
+    <button data-tab="shopping"><span class="icon">🛒</span>장보기</button>
+    <button data-tab="me"><span class="icon">⚙️</span>내정보</button>
+  </nav>
+</div>
+<div id="modalRoot"></div>
+
+<script src="recipes.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
