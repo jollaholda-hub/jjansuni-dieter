@@ -23,6 +23,7 @@ const INGREDIENT_CATALOG = [
   { name: "알배추", cat: "채소" },
   { name: "팽이버섯", cat: "채소" },
   { name: "순두부", cat: "단백질" },
+  { name: "닭안심", cat: "단백질" },
   { name: "밥(현미/흰밥)", cat: "곡물" },
   { name: "김", cat: "곡물" },
   { name: "견과류", cat: "기타" },
@@ -310,5 +311,32 @@ const SEED_RECIPES = [
     kidFriendly: false, hidesVeggies: false,
     mealPrep: { ok: false, storage: "" },
     steps: ["양배추·오이 채썰기", "간장·고춧가루로 무치기"]
+  },
+  {
+    id: "r28", name: "닭안심 팽이버섯볶음", mealType: "dinner",
+    calories: 300, prepTimeMin: 9, costWon: 3200,
+    ingredients: ["닭안심", "팽이버섯", "간장", "참기름"],
+    tags: ["고단백", "저탄수", "밀프렙유튜브"], hasFlour: false, hasDairy: false,
+    kidFriendly: true, hidesVeggies: false,
+    mealPrep: { ok: true, storage: "냉동 2주" },
+    steps: ["닭안심 한입크기로 썰기", "팽이버섯과 함께 센불에 볶기", "간장·참기름으로 마무리"]
+  },
+  {
+    id: "r29", name: "소고기 육개장", mealType: "dinner",
+    calories: 270, prepTimeMin: 10, costWon: 3500,
+    ingredients: ["소고기다짐육", "대파", "고춧가루", "간장"],
+    tags: ["국물", "매콤", "밀프렙유튜브"], hasFlour: false, hasDairy: false,
+    kidFriendly: false, hidesVeggies: false,
+    mealPrep: { ok: true, storage: "냉장 3일 / 냉동 2주" },
+    steps: ["소고기 참기름 없이 볶기", "대파 듬뿍 넣고 같이 볶기", "물 붓고 고춧가루·간장으로 얼큰하게 끓이기"]
+  },
+  {
+    id: "r30", name: "냉장고털이 비빔밥", mealType: "lunch",
+    calories: 420, prepTimeMin: 10, costWon: 2500,
+    ingredients: ["밥(현미/흰밥)", "당근", "오이", "계란", "고춧가루", "참기름"],
+    tags: ["초간단", "냉장고털이", "밀프렙유튜브"], hasFlour: false, hasDairy: false,
+    kidFriendly: true, hidesVeggies: true,
+    mealPrep: { ok: true, storage: "밥·나물은 냉동 2주, 계란은 그때그때" },
+    steps: ["집에 있는 채소들 잘게 채썰기 (당근·오이 기본, 뭐든 대체 가능)", "밥 위에 채소 올리고 계란 얹기", "고춧가루·참기름 넣고 비비기"]
   },
 ];

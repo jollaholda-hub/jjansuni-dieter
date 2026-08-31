@@ -44,6 +44,7 @@ function defaultState() {
     prefTags: {},
     dailyPlans: {},
     monthlyPlans: {},
+    mealPrepPlan: {},
     history: [],
     spendLog: {},
     eatLog: {},
@@ -177,20 +178,55 @@ function daysInMonthOf(mk) {
   const [y, m] = mk.split("-").map(Number);
   return new Date(y, m, 0).getDate();
 }
+function bestMealPrepCandidate(mealType, history) {
+  const haveSet = pantryHasSet();
+  const pool = eligiblePool(mealType).filter(r => r.mealPrep && r.mealPrep.ok && /냉동/.test(r.mealPrep.storage || ""));
+  if (!pool.length) return null;
+  const scored = pool.map(r => ({ r, s: scoreRecipe(r, mealType, haveSet, [], history, false) }))
+    .sort((a, b) => b.s - a.s);
+  return scored[0].r;
+}
+const MEAL_PREP_BATCH_SERVINGS = 4;
+function chunkDates(dateKeys, chunkSize) {
+  const chunks = [];
+  for (let start = 0; start < dateKeys.length; start += chunkSize) chunks.push(dateKeys.slice(start, start + chunkSize));
+  return chunks;
+}
 function generateMonthlyPlan(mk) {
   const days = daysInMonthOf(mk);
+  const dateKeys = [];
+  for (let day = 1; day <= days; day++) dateKeys.push(`${mk}-${String(day).padStart(2, "0")}`);
+  const baseHistory = state.history.slice(-10);
+
+  const mealPrepPicks = {};
+  ["lunch", "dinner"].forEach(mt => {
+    const candidate = bestMealPrepCandidate(mt, baseHistory);
+    if (candidate) mealPrepPicks[mt] = candidate.id;
+  });
+
   const plan = {};
-  const tempHistory = state.history.slice(-10);
-  for (let day = 1; day <= days; day++) {
-    const dateStr = `${mk}-${String(day).padStart(2, "0")}`;
+  const tempHistory = baseHistory.slice();
+  dateKeys.forEach(dateStr => {
     const meals = {};
     ["breakfast", "lunch", "dinner", "snack"].forEach(mt => {
-      const r = bestForMeal(mt, [], tempHistory, false);
+      const exclude = mealPrepPicks[mt] ? [mealPrepPicks[mt]] : [];
+      const r = bestForMeal(mt, exclude, tempHistory, false);
       meals[mt] = r ? r.id : null;
     });
     plan[dateStr] = meals;
     tempHistory.push({ date: dateStr, meals });
-  }
+  });
+
+  const chunks = chunkDates(dateKeys, 7);
+  ["lunch", "dinner"].forEach(mt => {
+    if (!mealPrepPicks[mt]) return;
+    chunks.forEach(chunk => {
+      const targetDay = chunk[Math.min(3, chunk.length - 1)];
+      plan[targetDay][mt] = mealPrepPicks[mt];
+    });
+  });
+  state.mealPrepPlan[mk] = { lunch: mealPrepPicks.lunch || null, dinner: mealPrepPicks.dinner || null, weeks: chunks.length };
+
   state.monthlyPlans[mk] = plan;
   saveState();
   return plan;
@@ -611,50 +647,21 @@ function openAddRecipeModal() {
   });
 }
 
-function weekMealsFromToday(days) {
-  const meals = [];
-  const tempHistory = state.history.slice(-10);
-  for (let i = 0; i < days; i++) {
-    const key = todayKey(new Date(Date.now() + i * DAY_MS));
-    const mk = monthKey(key);
-    const mp = state.monthlyPlans[mk];
-    if (mp && mp[key]) {
-      meals.push(mp[key]);
-      tempHistory.push({ date: key, meals: mp[key] });
-    } else if (i === 0 && state.dailyPlans[key]) {
-      meals.push(state.dailyPlans[key]);
-      tempHistory.push({ date: key, meals: state.dailyPlans[key] });
-    } else {
-      const dayMeals = {};
-      ["breakfast", "lunch", "dinner", "snack"].forEach(mt => {
-        const r = bestForMeal(mt, [], tempHistory, false);
-        dayMeals[mt] = r ? r.id : null;
-      });
-      meals.push(dayMeals);
-      tempHistory.push({ date: key, meals: dayMeals });
-    }
+function mealPrepHtml(mk) {
+  const picks = state.mealPrepPlan[mk];
+  if (!picks || (!picks.lunch && !picks.dinner)) {
+    return `<div class="empty-note" style="padding:0;text-align:left;">밀프렙할 만한(냉장/냉동 보관 가능한) 메뉴가 아직 없어요. 레시피에 밀프렙 가능 표시를 해보세요.</div>`;
   }
-  return meals;
-}
-function weeklyMealPrepHtml() {
-  const weekMeals = weekMealsFromToday(7);
-  const counts = {};
-  weekMeals.forEach(meals => {
-    Object.values(meals).filter(Boolean).forEach(id => {
-      const r = recipeById(id);
-      if (!r || !r.mealPrep || !r.mealPrep.ok) return;
-      counts[id] = (counts[id] || 0) + 1;
-    });
-  });
-  const ids = Object.keys(counts);
-  if (!ids.length) {
-    return `<div class="empty-note" style="padding:0;text-align:left;">이번 주 식단 중 미리 만들어 보관하기 좋은 메뉴가 아직 없어요. 위에서 "이번 달 식단 짜기"를 먼저 해보세요.</div>`;
-  }
-  const rows = ids.map(id => {
-    const r = recipeById(id);
-    return `<div class="shop-item"><span>${r.name} <span class="tag">${counts[id]}회분</span></span><span class="cost">${r.mealPrep.storage}</span></div>`;
+  const slots = [
+    { mt: "lunch", label: "점심용 (본인)" },
+    { mt: "dinner", label: "저녁용 (가족)" },
+  ].filter(s => picks[s.mt]);
+  const rows = slots.map(s => {
+    const r = recipeById(picks[s.mt]);
+    if (!r) return "";
+    return `<div class="shop-item"><span>${r.name} <span class="tag">${s.label}</span></span><span class="cost">${r.mealPrep.storage}</span></div>`;
   }).join("");
-  return `<div class="empty-note" style="padding:0 0 8px;text-align:left;">이번 주는 아래 메뉴들을 한번에 만들어 냉장/냉동해두면, 그날그날은 데우기만 하면 돼요.</div>${rows}`;
+  return `<div class="empty-note" style="padding:0 0 8px;text-align:left;">이번 달은 이 ${slots.length}가지를 하루 날 잡아 한번에 만들어두세요. 각각 ${MEAL_PREP_BATCH_SERVINGS}인분씩 만들어서 냉동해두면, 매주 하나씩 꺼내 데우기만 하면 돼요 (이미 이번 달 식단에 매주 1번씩 자동으로 들어가 있어요).</div>${rows}`;
 }
 
 function renderShopping() {
@@ -692,8 +699,8 @@ function renderShopping() {
     const missing = Object.keys(need).filter(i => !have.has(i)).sort((a, b) => need[b] - need[a]);
     bodyHtml = `
       <div class="card">
-        <h2>🥡 이번 주 밀프렙 추천</h2>
-        ${weeklyMealPrepHtml()}
+        <h2>🥡 이번 달 밀프렙 (하루에 끝내기)</h2>
+        ${mealPrepHtml(mk)}
       </div>
       <div class="card">
         <h2>🛒 이번 달 식단 기준 장보기 목록</h2>
