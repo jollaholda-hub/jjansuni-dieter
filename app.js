@@ -103,6 +103,14 @@ function deriveProfile() {
 function allRecipes() {
   return state.customRecipes.concat(SEED_RECIPES);
 }
+function findCalorieMatch(text) {
+  const q = (text || "").trim().toLowerCase();
+  if (!q) return null;
+  const pool = allRecipes().map(r => ({ name: r.name, calories: r.calories })).concat(COMMON_FOODS);
+  let hit = pool.find(f => f.name.toLowerCase() === q);
+  if (!hit) hit = pool.find(f => f.name.toLowerCase().includes(q) || q.includes(f.name.toLowerCase()));
+  return hit || null;
+}
 function recipeById(id) {
   return allRecipes().find(r => r.id === id);
 }
@@ -269,6 +277,40 @@ function swapMeal(mealType, newId) {
   state.spendLog[key] = costSum;
   saveState();
 }
+function refreshTodayPlan() {
+  const key = todayKey();
+  const current = state.dailyPlans[key] || {};
+  const meals = {};
+  ["breakfast", "lunch", "dinner", "snack"].forEach(mt => {
+    const exclude = current[mt] ? [current[mt]] : [];
+    const r = bestForMeal(mt, exclude);
+    meals[mt] = r ? r.id : (current[mt] || null);
+  });
+  state.dailyPlans[key] = meals;
+  const hist = state.history.find(h => h.date === key);
+  if (hist) hist.meals = Object.assign({}, meals);
+  const mk = monthKey(key);
+  if (state.monthlyPlans[mk] && state.monthlyPlans[mk][key]) {
+    state.monthlyPlans[mk][key] = Object.assign({}, meals);
+  }
+  const costSum = Object.values(meals).filter(Boolean).reduce((s, id) => s + ((recipeById(id) || {}).costWon || 0), 0);
+  state.spendLog[key] = costSum;
+  saveState();
+}
+function swapMealSlots(mtA, mtB) {
+  const key = todayKey();
+  const plan = state.dailyPlans[key];
+  const tmp = plan[mtA];
+  plan[mtA] = plan[mtB];
+  plan[mtB] = tmp;
+  const hist = state.history.find(h => h.date === key);
+  if (hist) hist.meals = Object.assign({}, plan);
+  const mk = monthKey(key);
+  if (state.monthlyPlans[mk] && state.monthlyPlans[mk][key]) {
+    state.monthlyPlans[mk][key] = Object.assign({}, plan);
+  }
+  saveState();
+}
 
 function el(html) {
   const t = document.createElement("template");
@@ -300,6 +342,7 @@ function mealCardHtml(mealType, recipeId) {
     ${missingLine(r)}
     <div class="meal-actions">
       <button class="btn secondary btn-swap" data-meal="${mealType}">🔄 다른 메뉴</button>
+      <button class="btn ghost btn-reorder" data-meal="${mealType}">🔀 자리 바꾸기</button>
     </div>
   </div>`;
 }
@@ -331,6 +374,7 @@ function renderHome() {
 
     <div class="card">
       <h2>🍽 오늘의 식단</h2>
+      <button class="btn ghost block" id="btnRefreshAll" style="margin-bottom:10px;">🔄 오늘 식단 전체 새로고침</button>
       ${["breakfast", "lunch", "dinner", "snack"].map(mt => mealCardHtml(mt, plan[mt])).join("")}
     </div>
 
@@ -365,7 +409,7 @@ function renderHome() {
       <h2>🍴 오늘 먹은 거 기록</h2>
       <div class="empty-note" style="padding:4px 0 10px;text-align:left;">사진은 채팅창에 Claude에게 보내주시면 분석해드려요. 여기엔 결과 칼로리만 숫자로 입력하면 돼요.</div>
       <button class="btn secondary block" id="btnOpenEatLog">+ 먹은 거 기록하기</button>
-      ${(state.eatLog[todayKey()] || []).map(e => `<div class="shop-item"><span>${e.desc}</span><span class="cost">${e.cal}kcal</span></div>`).join("")}
+      ${(state.eatLog[todayKey()] || []).map(e => `<div class="shop-item"><span>${e.desc}${e.amount ? " · " + e.amount : ""}</span><span class="cost">${e.cal ? e.cal + "kcal" : "칼로리 미확인"}</span></div>`).join("")}
     </div>
 
     <div class="card">
@@ -381,6 +425,35 @@ function renderHome() {
 }
 
 function bindHomeEvents() {
+  document.getElementById("btnRefreshAll").addEventListener("click", () => {
+    refreshTodayPlan();
+    renderHome();
+  });
+  document.querySelectorAll(".btn-reorder").forEach(btn => {
+    btn.addEventListener("click", () => {
+      const mt = btn.dataset.meal;
+      const plan = state.dailyPlans[todayKey()];
+      const others = ["breakfast", "lunch", "dinner", "snack"].filter(m => m !== mt);
+      openModal(`
+        <h2>${MEAL_LABEL[mt]}과 자리 바꾸기</h2>
+        ${others.map(om => {
+          const r = recipeById(plan[om]);
+          return `<div class="recipe-item">
+            <div class="rname">${MEAL_LABEL[om]}: ${r ? r.name : "-"}</div>
+            <div class="meal-actions"><button class="btn btn-do-reorder" data-other="${om}">이거랑 바꾸기</button></div>
+          </div>`;
+        }).join("")}
+        <div class="modal-close-row"><button class="btn ghost" id="modalCloseBtn">취소</button></div>
+      `);
+      document.querySelectorAll(".btn-do-reorder").forEach(b => {
+        b.addEventListener("click", () => {
+          swapMealSlots(mt, b.dataset.other);
+          closeModal();
+          renderHome();
+        });
+      });
+    });
+  });
   const exDoneBtn = document.getElementById("btnExDone");
   if (exDoneBtn) exDoneBtn.addEventListener("click", () => {
     const mode = state.settings.exerciseMode || "home";
@@ -439,18 +512,52 @@ function bindHomeEvents() {
   document.getElementById("btnOpenEatLog").addEventListener("click", () => {
     openModal(`
       <h2>오늘 먹은 거 기록</h2>
-      <div class="field"><label>무엇을 드셨나요?</label><input type="text" id="eatDesc" placeholder="예: 김치볶음밥"></div>
-      <div class="field"><label>칼로리(kcal)</label><input type="number" id="eatCal" placeholder="예: 450"></div>
+      <div class="field"><label>무엇을 드셨나요?</label><input type="text" id="eatDesc" placeholder="예: 김치볶음밥, 라면, 사과"></div>
+      <div class="field">
+        <label>양</label>
+        <div class="seg" id="eatAmountSeg">
+          <button type="button" data-v="0.5">0.5인분</button>
+          <button type="button" data-v="1" class="active">1인분</button>
+          <button type="button" data-v="1.5">1.5인분</button>
+          <button type="button" data-v="2">2인분</button>
+        </div>
+      </div>
+      <div class="empty-note" id="eatCalPreview" style="padding:4px 0;text-align:left;">이름을 입력하면 칼로리를 자동으로 계산해드려요.</div>
+      <div class="field"><label>칼로리(자동 계산, 직접 수정 가능)</label><input type="number" id="eatCal"></div>
       <button class="btn block" id="eatSaveBtn">기록하기</button>
       <div class="modal-close-row"><button class="btn ghost" id="modalCloseBtn">취소</button></div>
     `);
+    let amount = 1;
+    const updatePreview = () => {
+      const desc = document.getElementById("eatDesc").value.trim();
+      const match = findCalorieMatch(desc);
+      const preview = document.getElementById("eatCalPreview");
+      if (match) {
+        const est = Math.round(match.calories * amount);
+        preview.textContent = `자동 계산: "${match.name}" 기준 → 약 ${est}kcal`;
+        document.getElementById("eatCal").value = est;
+      } else if (desc) {
+        preview.textContent = `칼로리 자동 계산이 안 돼요 — 사진이나 이름을 채팅으로 보내주시면 분석해드릴게요. 아래에 직접 입력해도 돼요.`;
+      } else {
+        preview.textContent = `이름을 입력하면 칼로리를 자동으로 계산해드려요.`;
+      }
+    };
+    document.getElementById("eatDesc").addEventListener("input", updatePreview);
+    document.querySelectorAll("#eatAmountSeg button").forEach(b => {
+      b.addEventListener("click", () => {
+        document.querySelectorAll("#eatAmountSeg button").forEach(x => x.classList.remove("active"));
+        b.classList.add("active");
+        amount = parseFloat(b.dataset.v);
+        updatePreview();
+      });
+    });
     document.getElementById("eatSaveBtn").addEventListener("click", () => {
-      const desc = document.getElementById("eatDesc").value.trim() || "기록";
-      const cal = parseInt(document.getElementById("eatCal").value, 10);
-      if (!cal || cal <= 0) return;
+      const desc = document.getElementById("eatDesc").value.trim();
+      if (!desc) return;
+      const cal = parseInt(document.getElementById("eatCal").value, 10) || 0;
       const key = todayKey();
       state.eatLog[key] = state.eatLog[key] || [];
-      state.eatLog[key].push({ desc, cal });
+      state.eatLog[key].push({ desc, amount: amount + "인분", cal });
       saveState();
       closeModal();
       renderHome();
@@ -753,17 +860,22 @@ function recentDaysSummaryHtml(days) {
   for (let i = 0; i < days; i++) {
     const d = new Date(Date.now() - i * DAY_MS);
     const key = todayKey(d);
-    const eaten = (state.eatLog[key] || []).reduce((s, e) => s + e.cal, 0);
+    const entries = state.eatLog[key] || [];
+    const eaten = entries.reduce((s, e) => s + (e.cal || 0), 0);
     const ex = state.exerciseLog[key];
-    rows.push({ key, eaten, ex });
+    rows.push({ key, entries, eaten, ex });
   }
-  const hasAny = rows.some(r => r.eaten > 0 || r.ex);
+  const hasAny = rows.some(r => r.entries.length || r.ex);
   if (!hasAny) return `<div class="empty-note">아직 기록이 없어요. 홈 화면에서 먹은 거·운동을 기록해보세요.</div>`;
-  return rows.map(r => `
+  return rows.map(r => {
+    let foodLabel = "기록없음";
+    if (r.entries.length) foodLabel = r.eaten ? `${r.entries.length}건 · 약 ${r.eaten}kcal` : `${r.entries.length}건 기록`;
+    return `
     <div class="shop-item">
-      <span>${r.key.slice(5)} · 🍴 ${r.eaten ? r.eaten + "kcal" : "기록없음"}</span>
+      <span>${r.key.slice(5)} · 🍴 ${foodLabel}</span>
       <span class="cost">${r.ex ? "✅ " + r.ex.name : "운동 기록없음"}</span>
-    </div>`).join("");
+    </div>`;
+  }).join("");
 }
 
 function renderMe() {

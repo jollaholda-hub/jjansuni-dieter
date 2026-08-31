@@ -1,3 +1,37 @@
+// 흔한 외식/일반 음식 칼로리 참고표 (1인분 기준, "먹은 거 기록"에서 자동 매칭용)
+const COMMON_FOODS = [
+  { name: "흰쌀밥 1공기", calories: 310 },
+  { name: "현미밥 1공기", calories: 300 },
+  { name: "라면", calories: 500 },
+  { name: "김밥 1줄", calories: 480 },
+  { name: "떡볶이 1인분", calories: 450 },
+  { name: "치킨(후라이드) 3조각", calories: 700 },
+  { name: "삼겹살 200g", calories: 600 },
+  { name: "짜장면", calories: 700 },
+  { name: "짬뽕", calories: 650 },
+  { name: "된장찌개", calories: 200 },
+  { name: "김치찌개", calories: 250 },
+  { name: "순두부찌개", calories: 280 },
+  { name: "비빔밥", calories: 550 },
+  { name: "냉면", calories: 500 },
+  { name: "삼각김밥", calories: 180 },
+  { name: "샌드위치", calories: 350 },
+  { name: "피자 2조각", calories: 500 },
+  { name: "햄버거", calories: 500 },
+  { name: "커피(아메리카노)", calories: 10 },
+  { name: "라떼", calories: 180 },
+  { name: "맥주 500ml", calories: 220 },
+  { name: "소주 1잔", calories: 70 },
+  { name: "과자 1봉지", calories: 450 },
+  { name: "초콜릿 1개", calories: 250 },
+  { name: "아이스크림 1개", calories: 200 },
+  { name: "바나나 1개", calories: 105 },
+  { name: "사과 1개", calories: 95 },
+  { name: "고구마 1개", calories: 130 },
+  { name: "계란 1개(삶은)", calories: 70 },
+  { name: "우유 200ml", calories: 130 },
+];
+
 // 재료 마스터 목록 (재고 탭에서 사용)
 const INGREDIENT_CATALOG = [
   { name: "계란", cat: "단백질" },
@@ -18,6 +52,10 @@ const INGREDIENT_CATALOG = [
   { name: "김치", cat: "채소" },
   { name: "대파", cat: "채소" },
   { name: "새우(손질)", cat: "단백질" },
+  { name: "연어(손질)", cat: "단백질" },
+  { name: "조개(손질)", cat: "단백질" },
+  { name: "낙지(손질)", cat: "단백질" },
+  { name: "닭발(조리된 손질)", cat: "단백질" },
   { name: "미역(건조)", cat: "기타" },
   { name: "양배추", cat: "채소" },
   { name: "알배추", cat: "채소" },
@@ -31,6 +69,10 @@ const INGREDIENT_CATALOG = [
   { name: "간장", cat: "양념" },
   { name: "소금", cat: "양념" },
   { name: "고춧가루", cat: "양념" },
+  { name: "고추장", cat: "양념" },
+  { name: "마늘", cat: "양념" },
+  { name: "사과", cat: "과일" },
+  { name: "땅콩버터", cat: "기타" },
 ];
 
 // 운동 전후 스트레칭 (항상 표시)
@@ -338,5 +380,68 @@ const SEED_RECIPES = [
     kidFriendly: true, hidesVeggies: true,
     mealPrep: { ok: true, storage: "밥·나물은 냉동 2주, 계란은 그때그때" },
     steps: ["집에 있는 채소들 잘게 채썰기 (당근·오이 기본, 뭐든 대체 가능)", "밥 위에 채소 올리고 계란 얹기", "고춧가루·참기름 넣고 비비기"]
+  },
+  {
+    id: "r31", name: "사과 땅콩버터", mealType: "breakfast",
+    calories: 220, prepTimeMin: 2, costWon: 1500,
+    ingredients: ["사과", "땅콩버터"],
+    tags: ["초간단", "아침", "자연당"], hasFlour: false, hasDairy: false,
+    kidFriendly: true, hidesVeggies: false,
+    mealPrep: { ok: false, storage: "" },
+    steps: ["사과를 웨지 모양으로 썰기", "땅콩버터 곁들이기"]
+  },
+  {
+    id: "r32", name: "매콤 새우볶음", mealType: "dinner",
+    calories: 260, prepTimeMin: 8, costWon: 3800,
+    ingredients: ["새우(손질)", "마늘", "고추장", "대파"],
+    tags: ["매운맛", "해물", "고단백"], hasFlour: false, hasDairy: false,
+    kidFriendly: false, hidesVeggies: false,
+    mealPrep: { ok: true, storage: "냉장 2일" },
+    steps: ["마늘 슬라이스 볶아 향내기", "새우 넣고 센불에 볶기", "고추장·대파 넣고 마무리"]
+  },
+  {
+    id: "r33", name: "연어 스테이크", mealType: "dinner",
+    calories: 340, prepTimeMin: 8, costWon: 5000,
+    ingredients: ["연어(손질)", "소금"],
+    tags: ["해물", "고단백", "간단"], hasFlour: false, hasDairy: false,
+    kidFriendly: true, hidesVeggies: false,
+    mealPrep: { ok: false, storage: "" },
+    steps: ["연어에 소금 밑간", "팬에 껍질부터 4분", "뒤집어서 3~4분 더 굽기"]
+  },
+  {
+    id: "r34", name: "매콤 조개탕", mealType: "dinner",
+    calories: 180, prepTimeMin: 9, costWon: 4000,
+    ingredients: ["조개(손질)", "대파", "고춧가루"],
+    tags: ["매운맛", "해물", "국물"], hasFlour: false, hasDairy: false,
+    kidFriendly: false, hidesVeggies: false,
+    mealPrep: { ok: false, storage: "" },
+    steps: ["물 끓으면 조개 넣기", "고춧가루 풀어 얼큰하게", "대파 넣고 마무리"]
+  },
+  {
+    id: "r35", name: "매운 닭가슴살 볶음", mealType: "dinner",
+    calories: 300, prepTimeMin: 9, costWon: 3200,
+    ingredients: ["닭가슴살", "고추장", "마늘", "고춧가루"],
+    tags: ["매운맛", "고단백", "저탄수"], hasFlour: false, hasDairy: false,
+    kidFriendly: false, hidesVeggies: false,
+    mealPrep: { ok: true, storage: "냉장 3일" },
+    steps: ["닭가슴살 한입크기로 썰기", "마늘과 함께 볶기", "고추장·고춧가루 넣고 매콤하게 볶기"]
+  },
+  {
+    id: "r36", name: "매콤 낙지볶음", mealType: "dinner",
+    calories: 280, prepTimeMin: 9, costWon: 4500,
+    ingredients: ["낙지(손질)", "양파", "고추장", "마늘"],
+    tags: ["매운맛", "해물", "고단백"], hasFlour: false, hasDairy: false,
+    kidFriendly: false, hidesVeggies: false,
+    mealPrep: { ok: false, storage: "" },
+    steps: ["낙지 한입크기로 썰기", "양파·마늘 먼저 볶기", "낙지·고추장 넣고 센불에 재빨리 볶기"]
+  },
+  {
+    id: "r37", name: "매운 닭발무침 (조리된 손질 닭발 활용)", mealType: "dinner",
+    calories: 320, prepTimeMin: 8, costWon: 4500,
+    ingredients: ["닭발(조리된 손질)", "고추장", "고춧가루", "마늘"],
+    tags: ["매운맛", "치팅", "야식"], hasFlour: false, hasDairy: false,
+    kidFriendly: false, hidesVeggies: false,
+    mealPrep: { ok: false, storage: "" },
+    steps: ["조리된 손질 닭발 데우기(전자레인지 2분)", "고추장·고춧가루·마늘로 양념장 만들기", "양념장에 버무리기"]
   },
 ];
