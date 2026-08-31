@@ -25,12 +25,14 @@ function withEuro(word) {
 function defaultState() {
   return {
     profile: { setupDone: false, height: 160, weight: 65, targetWeight: 58, age: 35, gender: "female", activityLevel: "mid", startDate: todayKey() },
-    settings: { avoidFlour: true, avoidDairy: true, monthlyBudget: 400000 },
+    settings: { avoidFlour: true, avoidDairy: true, monthlyBudget: 400000, exerciseMode: "home" },
     pantry: {},
+    customIngredients: [],
     weightLog: [],
     customRecipes: [],
     prefTags: {},
     dailyPlans: {},
+    monthlyPlans: {},
     history: [],
     spendLog: {},
     eatLog: {},
@@ -102,11 +104,12 @@ function eligiblePool(mealType) {
     !(state.settings.avoidDairy && r.hasDairy)
   );
 }
-function recentIdsForMeal(mealType, withinDays) {
+function recentIdsForMeal(mealType, withinDays, history) {
+  const hist = history || state.history;
   const cutoff = Date.now() - withinDays * DAY_MS;
-  return state.history.filter(h => new Date(h.date).getTime() >= cutoff).map(h => h.meals[mealType]).filter(Boolean);
+  return hist.filter(h => new Date(h.date).getTime() >= cutoff).map(h => h.meals[mealType]).filter(Boolean);
 }
-function scoreRecipe(r, mealType, haveSet, excludeIds) {
+function scoreRecipe(r, mealType, haveSet, excludeIds, history) {
   if (excludeIds.includes(r.id)) return -Infinity;
   const total = r.ingredients.length || 1;
   const have = r.ingredients.filter(i => haveSet.has(i)).length;
@@ -115,20 +118,32 @@ function scoreRecipe(r, mealType, haveSet, excludeIds) {
   let prefScore = 0;
   (r.tags || []).forEach(t => prefScore += (state.prefTags[t] || 0));
   (r.ingredients || []).forEach(i => prefScore += (state.prefTags[i] || 0) * 0.5);
-  const recent2 = recentIdsForMeal(mealType, 2);
-  const recent5 = recentIdsForMeal(mealType, 5);
+  const recent3 = recentIdsForMeal(mealType, 3, history);
+  const recent7 = recentIdsForMeal(mealType, 7, history);
+  const recent14 = recentIdsForMeal(mealType, 14, history);
   let variety = 0;
-  if (recent2.includes(r.id)) variety -= 5;
-  else if (recent5.includes(r.id)) variety -= 2;
+  if (recent3.includes(r.id)) variety -= 9;
+  else if (recent7.includes(r.id)) variety -= 5;
+  else if (recent14.includes(r.id)) variety -= 2;
   const costPenalty = (r.costWon || 0) / 1000 * 0.25;
   return pantryMatch * 6 + kidBonus + prefScore * 0.8 + variety - costPenalty + Math.random() * 0.4;
 }
-function bestForMeal(mealType, excludeIds = []) {
+function pickWithVariety(scored) {
+  const top = scored.slice(0, Math.min(3, scored.length));
+  const roll = Math.random();
+  if (top.length < 2 || roll < 0.55) return top[0].r;
+  if (top.length < 3 || roll < 0.85) return top[1].r;
+  return top[2].r;
+}
+function bestForMeal(mealType, excludeIds = [], history) {
   const haveSet = pantryHasSet();
   const pool = eligiblePool(mealType);
   if (!pool.length) return null;
-  return pool.map(r => ({ r, s: scoreRecipe(r, mealType, haveSet, excludeIds) }))
-    .sort((a, b) => b.s - a.s)[0].r;
+  const scored = pool.map(r => ({ r, s: scoreRecipe(r, mealType, haveSet, excludeIds, history) }))
+    .filter(x => x.s > -Infinity)
+    .sort((a, b) => b.s - a.s);
+  if (!scored.length) return null;
+  return pickWithVariety(scored);
 }
 function alternativesForMeal(mealType, excludeIds, count = 3) {
   const haveSet = pantryHasSet();
@@ -140,14 +155,45 @@ function alternativesForMeal(mealType, excludeIds, count = 3) {
     .map(x => x.r);
 }
 
+function daysInMonthOf(mk) {
+  const [y, m] = mk.split("-").map(Number);
+  return new Date(y, m, 0).getDate();
+}
+function generateMonthlyPlan(mk) {
+  const days = daysInMonthOf(mk);
+  const plan = {};
+  const tempHistory = state.history.slice(-10);
+  for (let day = 1; day <= days; day++) {
+    const dateStr = `${mk}-${String(day).padStart(2, "0")}`;
+    const meals = {};
+    ["breakfast", "lunch", "dinner", "snack"].forEach(mt => {
+      const r = bestForMeal(mt, [], tempHistory);
+      meals[mt] = r ? r.id : null;
+    });
+    plan[dateStr] = meals;
+    tempHistory.push({ date: dateStr, meals });
+  }
+  state.monthlyPlans[mk] = plan;
+  saveState();
+  return plan;
+}
+function monthlyPlanFor(mk) {
+  return state.monthlyPlans[mk] || null;
+}
 function ensureTodayPlan() {
   const key = todayKey();
   if (state.dailyPlans[key]) return state.dailyPlans[key];
+  const mk = monthKey(key);
+  const mPlan = monthlyPlanFor(mk);
   const meals = {};
-  ["breakfast", "lunch", "dinner", "snack"].forEach(mt => {
-    const r = bestForMeal(mt, []);
-    meals[mt] = r ? r.id : null;
-  });
+  if (mPlan && mPlan[key]) {
+    Object.assign(meals, mPlan[key]);
+  } else {
+    ["breakfast", "lunch", "dinner", "snack"].forEach(mt => {
+      const r = bestForMeal(mt, []);
+      meals[mt] = r ? r.id : null;
+    });
+  }
   state.dailyPlans[key] = meals;
   state.history.push({ date: key, meals: Object.assign({}, meals) });
   if (state.history.length > 40) state.history.shift();
@@ -161,6 +207,10 @@ function swapMeal(mealType, newId) {
   state.dailyPlans[key][mealType] = newId;
   const hist = state.history.find(h => h.date === key);
   if (hist) hist.meals[mealType] = newId;
+  const mk = monthKey(key);
+  if (state.monthlyPlans[mk] && state.monthlyPlans[mk][key]) {
+    state.monthlyPlans[mk][key][mealType] = newId;
+  }
   const costSum = Object.values(state.dailyPlans[key]).filter(Boolean).reduce((s, id) => s + ((recipeById(id) || {}).costWon || 0), 0);
   state.spendLog[key] = costSum;
   saveState();
@@ -206,8 +256,11 @@ function renderHome() {
   const plan = state.dailyPlans[todayKey()];
   const eatToday = (state.eatLog[todayKey()] || []).reduce((s, e) => s + e.cal, 0);
   const remain = d.dailyTarget - eatToday;
-  const exIdx = new Date().getDate() % EXERCISE_POOL.length;
-  const ex = EXERCISE_POOL[exIdx];
+  const mode = state.settings.exerciseMode || "home";
+  const modePool = EXERCISE_MODES[mode];
+  const exIdx = new Date().getDate() % modePool.length;
+  const ex = modePool[exIdx];
+  const stretch = STRETCHES[new Date().getDate() % STRETCHES.length];
 
   document.getElementById("main").innerHTML = `
     <div class="hero">
@@ -228,12 +281,22 @@ function renderHome() {
 
     <div class="card">
       <h2>🏃 오늘의 운동</h2>
+      <div class="field" style="margin-bottom:10px;">
+        <div class="seg" id="exModeSeg">
+          ${Object.keys(EXERCISE_MODE_LABEL).map(k => `<button type="button" data-v="${k}" class="${mode === k ? "active" : ""}">${EXERCISE_MODE_LABEL[k]}</button>`).join("")}
+        </div>
+      </div>
       <div class="exercise-row">
         <div>
           <div class="ex-name">${ex.name}</div>
           <div class="ex-note">${ex.note}</div>
         </div>
         <div class="ex-kcal">-${ex.kcal}kcal</div>
+      </div>
+      <ol class="steps">${(ex.steps || []).map(s => `<li>${s}</li>`).join("")}</ol>
+      <div style="margin-top:12px;padding-top:10px;border-top:1px solid var(--border);">
+        <div class="ex-name" style="font-size:13px;">🧘 스트레칭: ${stretch.name}</div>
+        <ol class="steps">${stretch.steps.map(s => `<li>${s}</li>`).join("")}</ol>
       </div>
     </div>
 
@@ -257,6 +320,13 @@ function renderHome() {
 }
 
 function bindHomeEvents() {
+  document.querySelectorAll("#exModeSeg button").forEach(btn => {
+    btn.addEventListener("click", () => {
+      state.settings.exerciseMode = btn.dataset.v;
+      saveState();
+      renderHome();
+    });
+  });
   document.querySelectorAll(".btn-swap").forEach(btn => {
     btn.addEventListener("click", () => {
       const mt = btn.dataset.meal;
@@ -337,10 +407,27 @@ function renderPantry() {
     cats[i.cat] = cats[i.cat] || [];
     cats[i.cat].push(i);
   });
+  const customCat = "직접 추가";
   document.getElementById("main").innerHTML = `
     <div class="card">
       <h2>🧺 남은 식재료 체크</h2>
       <div class="empty-note" style="padding:0 0 10px;text-align:left;">있는 재료를 켜두면 그 재료로 만들 수 있는 식단을 우선 추천해요.</div>
+      <div class="field" style="display:flex;gap:6px;margin-bottom:10px;">
+        <input type="text" id="newIngInput" placeholder="재료 이름 직접 추가" style="flex:1;">
+        <button class="btn secondary" id="newIngBtn" style="white-space:nowrap;">+ 추가</button>
+      </div>
+      ${state.customIngredients.length ? `
+        <div class="pantry-cat">
+          <h3>${customCat}</h3>
+          ${state.customIngredients.map(name => `
+            <div class="pantry-item">
+              <span class="name">${name}</span>
+              <div style="display:flex;align-items:center;gap:8px;">
+                <div class="toggle ${state.pantry[name] ? "on" : ""}" data-name="${name}"><div class="knob"></div></div>
+                <button class="btn ghost del-ing" data-name="${name}" style="padding:4px 8px;">삭제</button>
+              </div>
+            </div>`).join("")}
+        </div>` : ""}
       ${Object.keys(cats).map(cat => `
         <div class="pantry-cat">
           <h3>${cat}</h3>
@@ -358,6 +445,25 @@ function renderPantry() {
       state.pantry[name] = !state.pantry[name];
       saveState();
       t.classList.toggle("on", state.pantry[name]);
+    });
+  });
+  document.getElementById("newIngBtn").addEventListener("click", () => {
+    const input = document.getElementById("newIngInput");
+    const name = input.value.trim();
+    if (!name) return;
+    const exists = INGREDIENT_CATALOG.some(i => i.name === name) || state.customIngredients.includes(name);
+    if (!exists) state.customIngredients.push(name);
+    state.pantry[name] = true;
+    saveState();
+    renderPantry();
+  });
+  document.querySelectorAll(".del-ing").forEach(btn => {
+    btn.addEventListener("click", () => {
+      const name = btn.dataset.name;
+      state.customIngredients = state.customIngredients.filter(n => n !== name);
+      delete state.pantry[name];
+      saveState();
+      renderPantry();
     });
   });
 }
@@ -451,36 +557,76 @@ function openAddRecipeModal() {
 }
 
 function renderShopping() {
-  const plan = ensureTodayPlan();
-  const have = pantryHasSet();
-  const missingMap = {};
-  ["breakfast", "lunch", "dinner", "snack"].forEach(mt => {
-    const r = recipeById(plan[mt]);
-    if (!r) return;
-    r.ingredients.filter(i => !have.has(i)).forEach(i => { missingMap[i] = r.name; });
-  });
-  const missingList = Object.keys(missingMap);
+  ensureTodayPlan();
   const mk = monthKey(todayKey());
-  const monthSpent = Object.keys(state.spendLog).filter(d => monthKey(d) === mk).reduce((s, d) => s + state.spendLog[d], 0);
+  const mPlan = monthlyPlanFor(mk);
+  const have = pantryHasSet();
   const budget = state.settings.monthlyBudget;
+  const monthSpent = Object.keys(state.spendLog).filter(d => monthKey(d) === mk).reduce((s, d) => s + state.spendLog[d], 0);
   const pct = clamp((monthSpent / budget) * 100, 0, 999);
-  const daysInMonth = new Date(new Date().getFullYear(), new Date().getMonth() + 1, 0).getDate();
+  const daysInMonth = daysInMonthOf(mk);
   const dayOfMonth = new Date().getDate();
   const daysLeft = Math.max(1, daysInMonth - dayOfMonth + 1);
   const dailyAllowance = Math.max(0, budget - monthSpent) / daysLeft;
 
+  let bodyHtml;
+  if (!mPlan) {
+    bodyHtml = `
+      <div class="card">
+        <h2>📅 이번 달 식단 미리 짜기</h2>
+        <div class="empty-note" style="padding:0 0 12px;text-align:left;">이번 달 전체 식단을 한번에 짜두면, 거기서 필요한 재료만 모아서 한번에 장볼 수 있어요.</div>
+        <button class="btn block" id="btnGenMonthly">이번 달 식단 짜기</button>
+      </div>`;
+  } else {
+    const totalCost = Object.values(mPlan).reduce((sum, meals) =>
+      sum + Object.values(meals).filter(Boolean).reduce((s, id) => s + ((recipeById(id) || {}).costWon || 0), 0), 0);
+    const need = {};
+    Object.values(mPlan).forEach(meals => {
+      Object.values(meals).filter(Boolean).forEach(id => {
+        const r = recipeById(id);
+        if (!r) return;
+        r.ingredients.forEach(i => { need[i] = (need[i] || 0) + 1; });
+      });
+    });
+    const missing = Object.keys(need).filter(i => !have.has(i)).sort((a, b) => need[b] - need[a]);
+    bodyHtml = `
+      <div class="card">
+        <h2>🛒 이번 달 식단 기준 장보기 목록</h2>
+        <div class="empty-note" style="padding:0 0 10px;text-align:left;">이번 달 식단(${Object.keys(mPlan).length}일)에 필요한 재료를 다 모았어요. 숫자는 이번 달에 쓰이는 횟수예요.</div>
+        ${missing.length ? missing.map(i => `<div class="shop-item"><span>${i}</span><span class="cost">${need[i]}회</span></div>`).join("") : `<div class="empty-note">지금 재고로 이번 달 식단을 다 만들 수 있어요! 👍</div>`}
+        <button class="btn ghost block" id="btnRegenMonthly" style="margin-top:12px;">이번 달 식단 다시 짜기</button>
+      </div>
+      <div class="card">
+        <h2>💰 이번 달 예상 식비</h2>
+        <div>${totalCost.toLocaleString()}원 (한달 식단 전체 기준) / 예산 ${budget.toLocaleString()}원</div>
+      </div>`;
+  }
+
   document.getElementById("main").innerHTML = `
     <div class="card">
-      <h2>💰 이번 달 식비</h2>
+      <h2>💳 이번 달 실제 지출</h2>
       <div>${monthSpent.toLocaleString()}원 / ${budget.toLocaleString()}원</div>
       <div class="budget-bar-wrap"><div class="budget-bar-fill ${pct > 100 ? "over" : ""}" style="width:${clamp(pct, 0, 100)}%"></div></div>
       <div class="empty-note" style="padding:2px 0 0;text-align:left;">${pct > 100 ? "예산을 넘었어요! 남은 기간은 재고 재료 위주로 추천할게요." : `남은 기간 하루 약 ${Math.round(dailyAllowance).toLocaleString()}원 사용 가능`}</div>
     </div>
-    <div class="card">
-      <h2>🛒 오늘 식단 기준 부족한 재료</h2>
-      ${missingList.length ? missingList.map(i => `<div class="shop-item"><span>${i}</span><span class="cost">${missingMap[i]}</span></div>`).join("") : `<div class="empty-note">지금 재고로 오늘 식단을 다 만들 수 있어요! 👍</div>`}
-    </div>
+    ${bodyHtml}
   `;
+  const genBtn = document.getElementById("btnGenMonthly");
+  if (genBtn) genBtn.addEventListener("click", () => { generateMonthlyPlan(mk); renderShopping(); });
+  const regenBtn = document.getElementById("btnRegenMonthly");
+  if (regenBtn) regenBtn.addEventListener("click", () => {
+    openModal(`
+      <h2>다시 짤까요?</h2>
+      <div class="empty-note" style="text-align:left;padding:0 0 12px;">오늘 이후 날짜의 식단이 새로 짜여요. 지난 날짜 기록은 그대로 남아요.</div>
+      <button class="btn block" id="confirmRegenBtn">다시 짜기</button>
+      <div class="modal-close-row"><button class="btn ghost" id="modalCloseBtn">취소</button></div>
+    `);
+    document.getElementById("confirmRegenBtn").addEventListener("click", () => {
+      generateMonthlyPlan(mk);
+      closeModal();
+      renderShopping();
+    });
+  });
 }
 
 function renderMe() {

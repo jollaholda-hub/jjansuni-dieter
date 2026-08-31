@@ -19,6 +19,10 @@ const INGREDIENT_CATALOG = [
   { name: "대파", cat: "채소" },
   { name: "새우(손질)", cat: "단백질" },
   { name: "미역(건조)", cat: "기타" },
+  { name: "양배추", cat: "채소" },
+  { name: "알배추", cat: "채소" },
+  { name: "팽이버섯", cat: "채소" },
+  { name: "순두부", cat: "단백질" },
   { name: "밥(현미/흰밥)", cat: "곡물" },
   { name: "김", cat: "곡물" },
   { name: "견과류", cat: "기타" },
@@ -28,16 +32,38 @@ const INGREDIENT_CATALOG = [
   { name: "고춧가루", cat: "양념" },
 ];
 
-// 홈트 운동 풀 (도구 없이 10~15분)
-const EXERCISE_POOL = [
-  { name: "빠르게 걷기 15분", kcal: 80, note: "집 앞 산책, 아이랑 같이 해도 좋아요" },
-  { name: "스쿼트 3세트 x 12회", kcal: 60, note: "TV 보면서 틈틈이" },
-  { name: "제자리 걷기 + 무릎 올리기 10분", kcal: 70, note: "비 오는 날 실내에서" },
-  { name: "계단 오르내리기 10분", kcal: 90, note: "엘리베이터 대신" },
-  { name: "플랭크 3세트 x 30초 + 스쿼트 2세트", kcal: 50, note: "코어 강화" },
-  { name: "홈트 서킷 12분 (스쿼트-런지-니업 반복)", kcal: 100, note: "유튜브 아무거나 틀어놓고" },
-  { name: "요가/스트레칭 15분", kcal: 40, note: "회복이 필요한 날" },
+// 운동 전후 스트레칭 (항상 표시)
+const STRETCHES = [
+  { name: "목·어깨 돌리기", steps: ["목을 좌우로 천천히 5회씩 돌리기", "어깨를 크게 앞뒤로 10회씩 돌리기"] },
+  { name: "허벅지 뒤 스트레칭", steps: ["다리 뻗고 앉아 상체를 앞으로 숙여 20초", "반대쪽도 20초"] },
+  { name: "골반·허리 스트레칭", steps: ["누워서 무릎을 가슴 쪽으로 당겨 20초", "좌우 번갈아 반복"] },
 ];
+
+// 상황별 운동 풀: 홈트(도구 없이)/러닝/헬스장
+const EXERCISE_MODES = {
+  home: [
+    { name: "빠르게 걷기 15분", kcal: 80, note: "집 앞 산책, 아이랑 같이 해도 좋아요", steps: ["팔을 크게 흔들며 15분 걷기"] },
+    { name: "여리탄탄 하체 홈트 1분 x 3세트", kcal: 60, note: "스쿼트-런지 번갈아, 허벅지 라인 집중", steps: ["스쿼트 20초", "런지(좌우) 20초", "제자리 뛰기 20초", "1분 휴식 후 2세트 더 반복"] },
+    { name: "복근 홈트 1분 x 3세트", kcal: 60, note: "허리 아프면 무리하지 않기", steps: ["크런치 20초", "플랭크 20초", "레그레이즈 20초", "1분 휴식 후 2세트 더 반복"] },
+    { name: "계단 오르내리기 10분", kcal: 90, note: "엘리베이터 대신", steps: ["10분간 계단 오르내리기, 힘들면 걷기로 전환"] },
+    { name: "팔뚝 탄력 홈트 5분", kcal: 40, note: "TV 보면서 틈틈이", steps: ["팔 벌려 원 그리기 30초 x 2", "팔굽혀펴기(무릎대고) 10회 x 3세트"] },
+    { name: "홈트 서킷 12분", kcal: 100, note: "유튜브에서 '홈트' 검색해서 아무 영상 하나 틀어놓고 따라하기 좋아요", steps: ["스쿼트-런지-니업을 1분씩 순서대로, 3바퀴 반복"] },
+    { name: "가벼운 요가·스트레칭 15분", kcal: 40, note: "몸이 무거운 회복일에", steps: ["아래 스트레칭 루틴을 천천히 2바퀴"] },
+  ],
+  running: [
+    { name: "가볍게 걷기+뛰기 20분", kcal: 150, note: "숨차면 바로 걷기로 전환, 무리하지 않기", steps: ["5분 걷기로 몸풀기", "1분 뛰기 + 2분 걷기를 반복", "5분 걷기로 마무리"] },
+    { name: "가벼운 조깅 25분", kcal: 210, note: "옆사람과 대화 가능한 페이스 유지", steps: ["5분 걷기로 몸풀기", "15분 조깅", "5분 걷기로 마무리"] },
+    { name: "인터벌 러닝 20분", kcal: 200, note: "체력 붙었을 때만, 무리 금지", steps: ["5분 걷기 워밍업", "빠르게 1분 + 천천히 2분을 4세트 반복"] },
+  ],
+  gym: [
+    { name: "유산소 15분 + 하체 근력 3종", kcal: 220, note: "레그프레스·레그컬·힙쓰러스트 가볍게 3세트씩", steps: ["트레드밀/사이클 15분", "레그프레스 3세트", "레그컬 3세트", "힙쓰러스트 3세트"] },
+    { name: "유산소 15분 + 상체 근력 3종", kcal: 210, note: "랫풀다운·체스트프레스·숄더프레스 가볍게 3세트씩", steps: ["트레드밀/사이클 15분", "랫풀다운 3세트", "체스트프레스 3세트", "숄더프레스 3세트"] },
+    { name: "전신 순환 운동 30분", kcal: 250, note: "기구 4~5개를 가볍게 순환하며 1세트씩", steps: ["유산소 5분 워밍업", "기구 4~5개를 각 1세트씩 순환, 3바퀴"] },
+  ],
+};
+const EXERCISE_MODE_LABEL = { home: "🏠 집에서", running: "🏃 러닝", gym: "🏋️ 헬스장" };
+// 하위 호환용 별칭
+const EXERCISE_POOL = EXERCISE_MODES.home;
 
 // 레시피 시드 데이터 — 전부 10분 이내, 기본적으로 밀가루/유제품 미포함
 const SEED_RECIPES = [
@@ -200,5 +226,61 @@ const SEED_RECIPES = [
     tags: ["초간단", "고단백"], hasFlour: false, hasDairy: false,
     kidFriendly: true, hidesVeggies: false,
     steps: ["오이 잘게 썰기", "참치와 양념 섞기", "밥 위에 얹기"]
+  },
+  {
+    id: "r21", name: "양배추 계란덮밥", mealType: "lunch",
+    calories: 350, prepTimeMin: 7, costWon: 1800,
+    ingredients: ["양배추", "계란", "밥(현미/흰밥)", "간장"],
+    tags: ["초간단", "저칼로리", "다이어트유튜브"], hasFlour: false, hasDairy: false,
+    kidFriendly: true, hidesVeggies: true,
+    steps: ["양배추 잘게 채썰기", "계란과 함께 부드럽게 볶기", "밥 위에 얹고 간장 살짝"]
+  },
+  {
+    id: "r22", name: "양배추 참치볶음", mealType: "lunch",
+    calories: 300, prepTimeMin: 8, costWon: 2200,
+    ingredients: ["양배추", "참치캔", "간장"],
+    tags: ["고단백", "저탄수", "다이어트유튜브"], hasFlour: false, hasDairy: false,
+    kidFriendly: false, hidesVeggies: false,
+    steps: ["양배추 굵게 채썰기", "팬에 참치와 함께 볶기", "간장으로 간하기"]
+  },
+  {
+    id: "r23", name: "닭가슴살 양배추볶음", mealType: "dinner",
+    calories: 330, prepTimeMin: 9, costWon: 3200,
+    ingredients: ["닭가슴살", "양배추", "당근", "간장"],
+    tags: ["고단백", "저탄수", "다이어트유튜브"], hasFlour: false, hasDairy: false,
+    kidFriendly: true, hidesVeggies: false,
+    steps: ["닭가슴살 한입크기로 썰어 먼저 볶기", "양배추·당근 넣고 센불에 볶기", "간장으로 마무리"]
+  },
+  {
+    id: "r24", name: "팽이버섯 두부구이", mealType: "breakfast",
+    calories: 220, prepTimeMin: 6, costWon: 2000,
+    ingredients: ["팽이버섯", "두부", "간장"],
+    tags: ["초간단", "저칼로리", "다이어트유튜브"], hasFlour: false, hasDairy: false,
+    kidFriendly: false, hidesVeggies: false,
+    steps: ["두부 도톰하게 썰어 팬에 굽기", "팽이버섯 곁들여 같이 굽기", "간장 살짝 둘러 마무리"]
+  },
+  {
+    id: "r25", name: "오이두부냉채", mealType: "snack",
+    calories: 150, prepTimeMin: 5, costWon: 1500,
+    ingredients: ["오이", "두부", "간장", "참기름"],
+    tags: ["초간단", "저칼로리", "다이어트유튜브"], hasFlour: false, hasDairy: false,
+    kidFriendly: false, hidesVeggies: false,
+    steps: ["두부·오이 얇게 썰어 접시에 담기", "간장·참기름 뿌리기"]
+  },
+  {
+    id: "r26", name: "알배추 순두부국", mealType: "dinner",
+    calories: 190, prepTimeMin: 9, costWon: 2000,
+    ingredients: ["알배추", "순두부", "간장", "대파"],
+    tags: ["국물", "저칼로리", "다이어트유튜브"], hasFlour: false, hasDairy: false,
+    kidFriendly: true, hidesVeggies: false,
+    steps: ["물 끓으면 알배추 넣기", "순두부 큼직하게 떠 넣기", "간장 간, 대파 넣고 마무리"]
+  },
+  {
+    id: "r27", name: "양배추 오이 아삭무침", mealType: "lunch",
+    calories: 120, prepTimeMin: 6, costWon: 1500,
+    ingredients: ["양배추", "오이", "간장", "고춧가루"],
+    tags: ["저칼로리", "아삭", "다이어트유튜브"], hasFlour: false, hasDairy: false,
+    kidFriendly: false, hidesVeggies: false,
+    steps: ["양배추·오이 채썰기", "간장·고춧가루로 무치기"]
   },
 ];
