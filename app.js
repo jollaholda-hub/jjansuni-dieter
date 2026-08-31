@@ -4,6 +4,17 @@ const MEAL_LABEL = { breakfast: "아침", lunch: "점심", dinner: "저녁", sna
 const MEAL_SHARE = { breakfast: 0.25, lunch: 0.35, dinner: 0.30, snack: 0.10 };
 const ACT_FACTOR = { low: 1.2, mid: 1.375, high: 1.55 };
 const ACT_LABEL = { low: "적음", mid: "보통", high: "많음" };
+const WEEKLY_CHEAP = {
+  issuedAt: "2026-08-27",
+  items: [
+    { name: "열무", change: "-15.7%" },
+    { name: "얼갈이배추", change: "-10.9%" },
+    { name: "애호박", change: "-7.9%" },
+    { name: "당근", change: "-5.1%" },
+    { name: "양배추", change: "-4.1%" },
+  ],
+  sourceUrl: "https://www.kamis.or.kr/customer/trend/economic/economic.do?action=priceInfoNew",
+};
 
 function todayKey(d = new Date()) {
   return d.toISOString().slice(0, 10);
@@ -602,7 +613,14 @@ function renderShopping() {
       </div>`;
   }
 
+  const cheapMatches = WEEKLY_CHEAP.items.filter(it => allRecipes().some(r => r.ingredients.includes(it.name)));
   document.getElementById("main").innerHTML = `
+    <div class="card">
+      <h2>🏷️ 이번 주 알뜰 시세 (KAMIS)</h2>
+      <div class="empty-note" style="padding:0 0 8px;text-align:left;">${WEEKLY_CHEAP.issuedAt} 발행 기준, 지난주보다 저렴해진 품목이에요.</div>
+      ${cheapMatches.map(it => `<div class="shop-item"><span>${it.name} <span class="tag">우리 레시피에 있음</span></span><span class="cost">${it.change}</span></div>`).join("")}
+      <div class="link-row"><a href="${WEEKLY_CHEAP.sourceUrl}" target="_blank" rel="noopener">최신 알뜰장보기 시세 보기 →</a></div>
+    </div>
     <div class="card">
       <h2>💳 이번 달 실제 지출</h2>
       <div>${monthSpent.toLocaleString()}원 / ${budget.toLocaleString()}원</div>
