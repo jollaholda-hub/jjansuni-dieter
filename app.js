@@ -568,7 +568,9 @@ function openAddRecipeModal() {
       <div class="checkline"><input type="checkbox" id="rfDairy"><label for="rfDairy" style="margin:0;">유제품 들어감</label></div>
       <div class="checkline"><input type="checkbox" id="rfKid" checked><label for="rfKid" style="margin:0;">아이와 같이 먹기 좋음</label></div>
       <div class="checkline"><input type="checkbox" id="rfHide"><label for="rfHide" style="margin:0;">채소를 티 안 나게 숨김</label></div>
+      <div class="checkline"><input type="checkbox" id="rfPrep"><label for="rfPrep" style="margin:0;">미리 만들어 냉장/냉동 보관 가능 (밀프렙)</label></div>
     </div>
+    <div class="field"><label>보관 방법 (밀프렙 체크 시)</label><input type="text" id="rfPrepStorage" placeholder="예: 냉장 3일 / 냉동 2주"></div>
     <button class="btn block" id="rfSaveBtn">저장하기</button>
     <div class="modal-close-row"><button class="btn ghost" id="modalCloseBtn">취소</button></div>
   `);
@@ -598,6 +600,7 @@ function openAddRecipeModal() {
       hasDairy: document.getElementById("rfDairy").checked,
       kidFriendly: document.getElementById("rfKid").checked,
       hidesVeggies: document.getElementById("rfHide").checked,
+      mealPrep: { ok: document.getElementById("rfPrep").checked, storage: document.getElementById("rfPrepStorage").value.trim() },
     };
     state.customRecipes.push(recipe);
     tags.forEach(t => state.prefTags[t] = (state.prefTags[t] || 0) + 2);
@@ -606,6 +609,52 @@ function openAddRecipeModal() {
     closeModal();
     renderRecipes();
   });
+}
+
+function weekMealsFromToday(days) {
+  const meals = [];
+  const tempHistory = state.history.slice(-10);
+  for (let i = 0; i < days; i++) {
+    const key = todayKey(new Date(Date.now() + i * DAY_MS));
+    const mk = monthKey(key);
+    const mp = state.monthlyPlans[mk];
+    if (mp && mp[key]) {
+      meals.push(mp[key]);
+      tempHistory.push({ date: key, meals: mp[key] });
+    } else if (i === 0 && state.dailyPlans[key]) {
+      meals.push(state.dailyPlans[key]);
+      tempHistory.push({ date: key, meals: state.dailyPlans[key] });
+    } else {
+      const dayMeals = {};
+      ["breakfast", "lunch", "dinner", "snack"].forEach(mt => {
+        const r = bestForMeal(mt, [], tempHistory, false);
+        dayMeals[mt] = r ? r.id : null;
+      });
+      meals.push(dayMeals);
+      tempHistory.push({ date: key, meals: dayMeals });
+    }
+  }
+  return meals;
+}
+function weeklyMealPrepHtml() {
+  const weekMeals = weekMealsFromToday(7);
+  const counts = {};
+  weekMeals.forEach(meals => {
+    Object.values(meals).filter(Boolean).forEach(id => {
+      const r = recipeById(id);
+      if (!r || !r.mealPrep || !r.mealPrep.ok) return;
+      counts[id] = (counts[id] || 0) + 1;
+    });
+  });
+  const ids = Object.keys(counts);
+  if (!ids.length) {
+    return `<div class="empty-note" style="padding:0;text-align:left;">이번 주 식단 중 미리 만들어 보관하기 좋은 메뉴가 아직 없어요. 위에서 "이번 달 식단 짜기"를 먼저 해보세요.</div>`;
+  }
+  const rows = ids.map(id => {
+    const r = recipeById(id);
+    return `<div class="shop-item"><span>${r.name} <span class="tag">${counts[id]}회분</span></span><span class="cost">${r.mealPrep.storage}</span></div>`;
+  }).join("");
+  return `<div class="empty-note" style="padding:0 0 8px;text-align:left;">이번 주는 아래 메뉴들을 한번에 만들어 냉장/냉동해두면, 그날그날은 데우기만 하면 돼요.</div>${rows}`;
 }
 
 function renderShopping() {
@@ -642,6 +691,10 @@ function renderShopping() {
     });
     const missing = Object.keys(need).filter(i => !have.has(i)).sort((a, b) => need[b] - need[a]);
     bodyHtml = `
+      <div class="card">
+        <h2>🥡 이번 주 밀프렙 추천</h2>
+        ${weeklyMealPrepHtml()}
+      </div>
       <div class="card">
         <h2>🛒 이번 달 식단 기준 장보기 목록</h2>
         <div class="empty-note" style="padding:0 0 10px;text-align:left;">이번 달 식단(${Object.keys(mPlan).length}일)에 필요한 재료를 다 모았어요. 숫자는 이번 달에 쓰이는 횟수예요.</div>
