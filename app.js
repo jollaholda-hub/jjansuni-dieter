@@ -120,10 +120,11 @@ function recentIdsForMeal(mealType, withinDays, history) {
   const cutoff = Date.now() - withinDays * DAY_MS;
   return hist.filter(h => new Date(h.date).getTime() >= cutoff).map(h => h.meals[mealType]).filter(Boolean);
 }
-function scoreRecipe(r, mealType, haveSet, excludeIds, history) {
+function scoreRecipe(r, mealType, haveSet, excludeIds, history, pantryStrict) {
   if (excludeIds.includes(r.id)) return -Infinity;
   const total = r.ingredients.length || 1;
   const have = r.ingredients.filter(i => haveSet.has(i)).length;
+  const missing = total - have;
   const pantryMatch = have / total;
   const kidBonus = (mealType === "lunch" || mealType === "dinner") && r.kidFriendly ? 3 : 0;
   let prefScore = 0;
@@ -137,20 +138,25 @@ function scoreRecipe(r, mealType, haveSet, excludeIds, history) {
   else if (recent7.includes(r.id)) variety -= 5;
   else if (recent14.includes(r.id)) variety -= 2;
   const costPenalty = (r.costWon || 0) / 1000 * 0.25;
-  return pantryMatch * 6 + kidBonus + prefScore * 0.8 + variety - costPenalty + Math.random() * 0.4;
+  const pantryWeight = pantryStrict ? 40 : 6;
+  const missingPenalty = pantryStrict ? missing * 8 : 0;
+  return pantryMatch * pantryWeight - missingPenalty + kidBonus + prefScore * 0.8 + variety - costPenalty + Math.random() * 0.4;
 }
 function pickWithVariety(scored) {
-  const top = scored.slice(0, Math.min(3, scored.length));
+  const top3 = scored.slice(0, Math.min(3, scored.length));
+  const margin = 6;
+  const close = top3.filter(x => top3[0].s - x.s <= margin);
+  if (close.length < 2) return top3[0].r;
   const roll = Math.random();
-  if (top.length < 2 || roll < 0.55) return top[0].r;
-  if (top.length < 3 || roll < 0.85) return top[1].r;
-  return top[2].r;
+  if (roll < 0.6) return close[0].r;
+  if (close.length < 3 || roll < 0.85) return close[1].r;
+  return close[2].r;
 }
-function bestForMeal(mealType, excludeIds = [], history) {
+function bestForMeal(mealType, excludeIds = [], history, pantryStrict = true) {
   const haveSet = pantryHasSet();
   const pool = eligiblePool(mealType);
   if (!pool.length) return null;
-  const scored = pool.map(r => ({ r, s: scoreRecipe(r, mealType, haveSet, excludeIds, history) }))
+  const scored = pool.map(r => ({ r, s: scoreRecipe(r, mealType, haveSet, excludeIds, history, pantryStrict) }))
     .filter(x => x.s > -Infinity)
     .sort((a, b) => b.s - a.s);
   if (!scored.length) return null;
@@ -159,7 +165,7 @@ function bestForMeal(mealType, excludeIds = [], history) {
 function alternativesForMeal(mealType, excludeIds, count = 3) {
   const haveSet = pantryHasSet();
   const pool = eligiblePool(mealType);
-  return pool.map(r => ({ r, s: scoreRecipe(r, mealType, haveSet, excludeIds) }))
+  return pool.map(r => ({ r, s: scoreRecipe(r, mealType, haveSet, excludeIds, null, true) }))
     .filter(x => x.s > -Infinity)
     .sort((a, b) => b.s - a.s)
     .slice(0, count)
@@ -178,7 +184,7 @@ function generateMonthlyPlan(mk) {
     const dateStr = `${mk}-${String(day).padStart(2, "0")}`;
     const meals = {};
     ["breakfast", "lunch", "dinner", "snack"].forEach(mt => {
-      const r = bestForMeal(mt, [], tempHistory);
+      const r = bestForMeal(mt, [], tempHistory, false);
       meals[mt] = r ? r.id : null;
     });
     plan[dateStr] = meals;
@@ -387,7 +393,7 @@ function bindHomeEvents() {
       !(state.settings.avoidDairy && r.hasDairy) &&
       (!q || r.name.toLowerCase().includes(q) || (r.tags || []).some(t => t.toLowerCase().includes(q)) || r.ingredients.some(i => i.toLowerCase().includes(q)))
     );
-    const results = pool.map(r => ({ r, s: scoreRecipe(r, r.mealType, haveSet, []) }))
+    const results = pool.map(r => ({ r, s: scoreRecipe(r, r.mealType, haveSet, [], null, true) }))
       .sort((a, b) => b.s - a.s).slice(0, 5).map(x => x.r);
     document.getElementById("cravingResults").innerHTML = results.length ? results.map(r => `
       <div class="recipe-item">
